@@ -3,20 +3,30 @@
  * 3-panel IDE-style layout: sidebar, editor, results
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Upload, Play, Trash2, Menu, X, Download, History } from 'lucide-react';
-import { toast } from 'sonner';
-import { initializeDatabase, createTable, executeQuery, dropTable } from '@/lib/database';
-import { parseFile, generateTableName } from '@/lib/fileParser';
-import { saveWorkspace, loadWorkspace, saveQueryHistory, loadQueryHistory } from '@/lib/storage';
-import { exportResultsToCSV, exportChartAsPNG } from '@/lib/export';
-import { Workspace, Table, QueryResult, QueryHistory } from '@/lib/types';
-import FileList from '@/components/FileList';
-import SQLEditor from '@/components/SQLEditor';
-import ResultsTable from '@/components/ResultsTable';
-import ChartViewer from '@/components/ChartViewer';
-import SideDrawer from '@/components/SideDrawer';
+import { useState, useEffect, useRef } from "react";
+import { Button } from "@/components/ui/button";
+import { Upload, Play, Trash2, Menu, X, Download, History } from "lucide-react";
+import { toast } from "sonner";
+import {
+  initializeDatabase,
+  createTable,
+  executeQuery,
+  dropTable,
+} from "@/lib/database";
+import { parseFile, generateTableName } from "@/lib/fileParser";
+import {
+  saveWorkspace,
+  loadWorkspace,
+  saveQueryHistory,
+  loadQueryHistory,
+} from "@/lib/storage";
+import { exportResultsToCSV, exportChartAsPNG } from "@/lib/export";
+import { Workspace, Table, QueryResult, QueryHistory } from "@/lib/types";
+import FileList from "@/components/FileList";
+import SQLEditor from "@/components/SQLEditor";
+import ResultsTable from "@/components/ResultsTable";
+import ChartViewer from "@/components/ChartViewer";
+import SideDrawer from "@/components/SideDrawer";
 
 export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -34,21 +44,21 @@ export default function Home() {
   useEffect(() => {
     const init = async () => {
       try {
-        console.log('Initializing database...');
+        console.log("Initializing database...");
         await initializeDatabase();
-        console.log('Database initialized');
+        console.log("Database initialized");
         setDbReady(true);
-        
+
         // Load or create workspace
-        const saved = loadWorkspace('default');
+        const saved = loadWorkspace("default");
         if (saved) {
           setWorkspace(saved);
-          setQueryHistory(loadQueryHistory('default'));
+          setQueryHistory(loadQueryHistory("default"));
         } else {
-          const history = loadQueryHistory('default');
+          const history = loadQueryHistory("default");
           const newWorkspace: Workspace = {
-            id: 'default',
-            name: 'Default Workspace',
+            id: "default",
+            name: "Default Workspace",
             tables: [],
             queries: history,
             charts: [],
@@ -61,13 +71,13 @@ export default function Home() {
         }
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error('Init error:', msg);
+        console.error("Init error:", msg);
         toast.error(`Database error: ${msg}`);
-        
+
         // Show UI anyway
         const newWorkspace: Workspace = {
-          id: 'default',
-          name: 'Default Workspace',
+          id: "default",
+          name: "Default Workspace",
           tables: [],
           queries: [],
           charts: [],
@@ -77,28 +87,30 @@ export default function Home() {
         setWorkspace(newWorkspace);
       }
     };
-    
+
     init();
   }, []);
 
   // Handle file upload
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const files = event.currentTarget.files;
     if (!files) return;
 
     if (!dbReady) {
-      toast.error('Database not ready yet');
+      toast.error("Database not ready yet");
       return;
     }
 
     setIsLoading(true);
     try {
       const newTables: Table[] = [];
-      
+
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const data = await parseFile(file);
-        
+
         if (data.length === 0) {
           toast.error(`${file.name}: No data found`);
           continue;
@@ -130,7 +142,7 @@ export default function Home() {
     } finally {
       setIsLoading(false);
       if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+        fileInputRef.current.value = "";
       }
     }
   };
@@ -138,12 +150,12 @@ export default function Home() {
   // Handle query execution
   const handleExecuteQuery = async (sql: string) => {
     if (!sql.trim()) {
-      toast.error('Please enter a query');
+      toast.error("Please enter a query");
       return;
     }
 
     if (!dbReady) {
-      toast.error('Database not ready');
+      toast.error("Database not ready");
       return;
     }
 
@@ -196,12 +208,12 @@ export default function Home() {
   // Handle export
   const handleExportResults = () => {
     if (!queryResult) {
-      toast.error('No results to export');
+      toast.error("No results to export");
       return;
     }
     try {
       exportResultsToCSV(queryResult, `results-${Date.now()}.csv`);
-      toast.success('Results exported as CSV');
+      toast.success("Results exported as CSV");
     } catch (error) {
       toast.error(`Export failed: ${(error as Error).message}`);
     }
@@ -209,12 +221,12 @@ export default function Home() {
 
   const handleExportChart = async () => {
     if (!queryResult) {
-      toast.error('No chart to export');
+      toast.error("No chart to export");
       return;
     }
     try {
-      await exportChartAsPNG('chart-container', `chart-${Date.now()}.png`);
-      toast.success('Chart exported as PNG');
+      await exportChartAsPNG("chart-container", `chart-${Date.now()}.png`);
+      toast.success("Chart exported as PNG");
     } catch (error) {
       toast.error(`Export failed: ${(error as Error).message}`);
     }
@@ -225,7 +237,9 @@ export default function Home() {
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
           <div className="text-4xl mb-4">⚙️</div>
-          <p className="text-muted-foreground">Initializing Data Observatory...</p>
+          <p className="text-muted-foreground">
+            Initializing Data Observatory...
+          </p>
         </div>
       </div>
     );
@@ -242,9 +256,9 @@ export default function Home() {
         >
           {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
-        
+
         <h1 className="text-sm font-semibold">Data Observatory</h1>
-        
+
         <div className="ml-auto flex gap-2">
           <button
             onClick={() => setDrawerOpen(true)}
@@ -285,11 +299,8 @@ export default function Home() {
       <div className="flex flex-1 pt-12 overflow-hidden">
         {/* Sidebar */}
         {sidebarOpen && (
-          <aside className="w-48 bg-card border-r border-border overflow-y-auto flex-shrink-0">
-            <FileList
-              tables={tables}
-              onDeleteTable={handleDeleteTable}
-            />
+          <aside className="w-48 bg-card border-r border-border overflow-y-auto shrink-0">
+            <FileList tables={tables} onDeleteTable={handleDeleteTable} />
           </aside>
         )}
 
@@ -298,7 +309,9 @@ export default function Home() {
           {/* Editor Panel */}
           <div className="flex-1 flex flex-col min-h-0 bg-card border border-border rounded-sm overflow-hidden">
             <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-              <label className="text-xs font-medium text-muted-foreground">SQL Query</label>
+              <label className="text-xs font-medium text-muted-foreground">
+                SQL Query
+              </label>
               <Button
                 size="sm"
                 variant="default"
@@ -344,13 +357,11 @@ export default function Home() {
             {/* Chart */}
             <div className="flex-1 bg-card border border-border rounded-sm overflow-hidden flex flex-col">
               <div className="px-3 py-2 border-b border-border flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground">Chart</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Chart
+                </label>
                 {queryResult && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handleExportChart}
-                  >
+                  <Button size="sm" variant="ghost" onClick={handleExportChart}>
                     <Download size={14} />
                   </Button>
                 )}
