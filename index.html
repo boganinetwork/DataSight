@@ -47,14 +47,20 @@
     </div>
 
     <div class="layout">
-      <div class="sidebar">
+      <aside class="sidebar" aria-label="Daftar tabel dan aksi file">
         <div>
           <h2>Tabel</h2>
           <div id="file-list" style="margin-top: 8px"></div>
         </div>
-        <button id="upload-btn">+ Upload CSV / JSON</button>
-        <button id="save-project-btn">Save Project</button>
-        <button id="load-project-btn">Load Project</button>
+        <button id="upload-btn" aria-label="Upload CSV / JSON">
+          + Upload CSV / JSON
+        </button>
+        <button id="save-project-btn" aria-label="Simpan Project">
+          Save Project
+        </button>
+        <button id="load-project-btn" aria-label="Muat Project">
+          Load Project
+        </button>
         <input
           type="file"
           id="project-input"
@@ -62,9 +68,9 @@
           style="display: none"
         />
         <input type="file" id="file-input" accept=".csv,.json" multiple />
-      </div>
+      </aside>
 
-      <div class="main">
+      <main class="main">
         <div class="card" style="flex: 0 0 auto">
           <h2>Query SQL</h2>
           <textarea
@@ -77,11 +83,19 @@
               <option value="">Riwayat query…</option>
             </select>
             <span class="hint" id="table-hint">belum ada tabel</span>
-            <button id="template-toggle" style="font-size: 12px">
+            <button
+              id="template-toggle"
+              style="font-size: 12px"
+              aria-label="Template"
+            >
               📋 Template
             </button>
-            <button id="ai-toggle" style="font-size: 12px">✨ AI</button>
-            <button id="run-btn" disabled>Jalankan ▸</button>
+            <button id="ai-toggle" style="font-size: 12px" aria-label="AI">
+              ✨ AI
+            </button>
+            <button id="run-btn" disabled aria-label="Jalankan Query">
+              Jalankan ▸
+            </button>
           </div>
           <div
             id="ai-panel"
@@ -101,7 +115,7 @@
                 flex-wrap: wrap;
               "
             >
-              <select id="ai-provider">
+              <select id="ai-provider" aria-label="Penyedia AI">
                 <option value="gemini">Gemini</option>
                 <option value="groq">Groq</option>
               </select>
@@ -136,7 +150,7 @@
                   font-size: 13px;
                 "
               />
-              <button id="ai-ask">Tanya</button>
+              <button id="ai-ask" aria-label="Kirim Pertanyaan">Tanya</button>
             </div>
             <div
               id="ai-status"
@@ -176,9 +190,15 @@
               id="filter-controls"
               style="display: none"
             >
-              <select id="filter-col"></select>
-              <select id="filter-val"></select>
-              <button id="filter-clear" style="font-size: 12px">✕ Clear</button>
+              <select id="filter-col" aria-label="Kolom Filter"></select>
+              <select id="filter-val" aria-label="Nilai Filter"></select>
+              <button
+                id="filter-clear"
+                style="font-size: 12px"
+                aria-label="Bersihkan Filter"
+              >
+                ✕ Clear
+              </button>
             </div>
             <div
               id="summary-stats"
@@ -196,21 +216,29 @@
           <div class="card">
             <h2>Chart</h2>
             <div class="chart-controls">
-              <select id="chart-type">
+              <select id="chart-type" aria-label="Tipe chart">
                 <option value="bar">Bar</option>
                 <option value="line">Line</option>
                 <option value="scatter">Scatter</option>
                 <option value="pie">Pie</option>
               </select>
-              <select id="chart-x">
+              <select id="chart-x" aria-label="Sumbu X">
                 <option>x</option>
               </select>
-              <select id="chart-y">
+              <select id="chart-y" aria-label="Sumbu Y">
                 <option>y</option>
               </select>
-              <button id="export-csv-btn">Export CSV</button>
-              <button id="export-png-btn">Export PNG</button>
-              <button id="pin-chart-btn" style="font-size: 12px">
+              <button id="export-csv-btn" aria-label="Ekspor CSV">
+                Export CSV
+              </button>
+              <button id="export-png-btn" aria-label="Ekspor PNG">
+                Export PNG
+              </button>
+              <button
+                id="pin-chart-btn"
+                style="font-size: 12px"
+                aria-label="Pin ke Dashboard"
+              >
                 + Pin ke Dashboard
               </button>
             </div>
@@ -219,7 +247,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
