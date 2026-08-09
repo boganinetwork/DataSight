@@ -263,8 +263,17 @@ function sanitizeTableName(filename) {
 }
 
 uploadBtn.addEventListener("click", () => fileInput.click());
+const SIZE_WARNING_MB = 3;
+
 fileInput.addEventListener("change", async (e) => {
   for (const file of e.target.files) {
+    const sizeMB = file.size / (1024 * 1024);
+    if (sizeMB > SIZE_WARNING_MB) {
+      const proceed = confirm(
+        `"${file.name}" berukuran ${sizeMB.toFixed(1)}MB. File besar berisiko gagal disimpan otomatis (localStorage browser terbatas ~5-10MB total). Lanjutkan upload?`,
+      );
+      if (!proceed) continue;
+    }
     const text = await file.text();
     const kind = file.name.endsWith(".json") ? "json" : "csv";
     const tableName = sanitizeTableName(file.name);
@@ -297,6 +306,10 @@ function renderFileList() {
     del.textContent = "✕";
     del.onclick = async (ev) => {
       ev.stopPropagation();
+      if (
+        !confirm(`Hapus tabel "${name}"? Data ini akan hilang dari workspace.`)
+      )
+        return;
       await conn.query(`DROP TABLE IF EXISTS "${name}"`);
       delete tables[name];
       localStorage.removeItem(STORAGE_KEY_PREFIX + name);
@@ -690,5 +703,53 @@ async function renderTemplateList(tableName) {
     listEl.appendChild(btn);
   });
 }
+
+const sidebarEl = document.querySelector(".sidebar");
+
+["dragenter", "dragover"].forEach((evt) => {
+  sidebarEl.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sidebarEl.style.background = "var(--panel2)";
+  });
+});
+["dragleave", "drop"].forEach((evt) => {
+  sidebarEl.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    sidebarEl.style.background = "";
+  });
+});
+
+sidebarEl.addEventListener("drop", async (e) => {
+  const files = [...e.dataTransfer.files].filter(
+    (f) => f.name.endsWith(".csv") || f.name.endsWith(".json"),
+  );
+  if (!files.length) {
+    statusEl.textContent = "File harus .csv atau .json";
+    return;
+  }
+  for (const file of files) {
+    const sizeMB = file.size / (1024 * 1024);
+    if (sizeMB > SIZE_WARNING_MB) {
+      const proceed = confirm(
+        `"${file.name}" berukuran ${sizeMB.toFixed(1)}MB. File besar berisiko gagal disimpan otomatis (localStorage browser terbatas ~5-10MB total). Lanjutkan upload?`,
+      );
+      if (!proceed) continue;
+    }
+    const text = await file.text();
+    const kind = file.name.endsWith(".json") ? "json" : "csv";
+    const tableName = sanitizeTableName(file.name);
+    statusEl.textContent = `⏳ Memuat "${file.name}"…`;
+    try {
+      await loadTableFromText(tableName, file.name, text, kind);
+      statusEl.textContent = `✓ tabel "${tableName}" dimuat`;
+    } catch (err) {
+      statusEl.textContent = "Gagal memuat file";
+      console.error(err);
+    }
+  }
+  renderFileList();
+});
 
 initDB();
