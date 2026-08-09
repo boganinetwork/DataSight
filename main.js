@@ -268,9 +268,10 @@ fileInput.addEventListener("change", async (e) => {
     const text = await file.text();
     const kind = file.name.endsWith(".json") ? "json" : "csv";
     const tableName = sanitizeTableName(file.name);
+    statusEl.textContent = `⏳ Memuat "${file.name}"…`;
     try {
       await loadTableFromText(tableName, file.name, text, kind);
-      statusEl.textContent = `tabel "${tableName}" dimuat`;
+      statusEl.textContent = `✓ tabel "${tableName}" dimuat`;
     } catch (err) {
       statusEl.textContent = "gagal memuat file";
       console.error(err);
@@ -327,8 +328,21 @@ async function runQuery() {
     populateChartColumns(rows);
     renderChart();
   } catch (err) {
-    resultArea.innerHTML = `<div class="error">${err.message}</div>`;
+    resultArea.innerHTML = `<div class="error">${friendlyErrorMessage(err.message)}</div>`;
   }
+}
+
+function friendlyErrorMessage(msg) {
+  if (/does not exist/i.test(msg) && /Table/i.test(msg)) {
+    return `Tabel tidak ditemukan. Cek nama tabel — tabel yang tersedia: ${Object.keys(tables).join(", ") || "(belum ada)"}.`;
+  }
+  if (/syntax error/i.test(msg)) {
+    return `Ada kesalahan penulisan SQL. Periksa kembali query kamu.\n\nDetail teknis: ${msg}`;
+  }
+  if (/Binder Error/i.test(msg) && /column/i.test(msg)) {
+    return `Nama kolom tidak ditemukan di tabel ini. Cek ejaan kolom.\n\nDetail teknis: ${msg}`;
+  }
+  return msg;
 }
 
 function renderTable(rows) {
@@ -541,7 +555,8 @@ async function askAI() {
       .join(", ") || "(belum ada tabel)";
   const systemPrompt = `Kamu adalah generator SQL untuk DuckDB. Tabel yang tersedia: ${schema}. Jawab HANYA dengan satu query SQL valid, tanpa penjelasan, tanpa markdown.`;
 
-  statusBox.textContent = "Meminta AI…";
+  statusBox.textContent = "⏳ Meminta AI…";
+  document.getElementById("ai-ask").disabled = true;
   try {
     let sql;
     if (provider === "gemini") {
@@ -589,8 +604,91 @@ async function askAI() {
     statusBox.textContent = "Query terisi, cek dulu sebelum dijalankan.";
   } catch (err) {
     statusBox.textContent = `Error: ${err.message}`;
+  } finally {
+    document.getElementById("ai-ask").disabled = false;
   }
 }
 document.getElementById("ai-ask").addEventListener("click", askAI);
+
+document.getElementById("template-toggle").addEventListener("click", () => {
+  const panel = document.getElementById("template-panel");
+  const isOpening = panel.style.display === "none";
+  panel.style.display = isOpening ? "block" : "none";
+  if (isOpening) populateTemplateTables();
+});
+
+function populateTemplateTables() {
+  const sel = document.getElementById("template-table");
+  sel.innerHTML = Object.keys(tables)
+    .map((t) => `<option value="${t}">${t}</option>`)
+    .join("");
+  sel.onchange = () => renderTemplateList(sel.value);
+  if (sel.value) renderTemplateList(sel.value);
+}
+
+async function renderTemplateList(tableName) {
+  const listEl = document.getElementById("template-list");
+  listEl.innerHTML = "Memuat kolom…";
+  if (!tableName) {
+    listEl.innerHTML = "Belum ada tabel.";
+    return;
+  }
+
+  const colInfo = await conn.query(`DESCRIBE "${tableName}"`);
+  const cols = colInfo.toArray().map((r) => r.toJSON());
+  const numericTypes = [
+    "INTEGER",
+    "BIGINT",
+    "DOUBLE",
+    "FLOAT",
+    "DECIMAL",
+    "HUGEINT",
+  ];
+  const numCols = cols
+    .filter((c) => numericTypes.some((t) => c.column_type.includes(t)))
+    .map((c) => c.column_name);
+  const textCols = cols
+    .filter((c) => !numericTypes.some((t) => c.column_type.includes(t)))
+    .map((c) => c.column_name);
+  const dateCols = cols
+    .filter(
+      (c) =>
+        c.column_type.includes("DATE") || c.column_type.includes("TIMESTAMP"),
+    )
+    .map((c) => c.column_name);
+
+  const templates = [];
+  if (textCols[0] && numCols[0]) {
+    templates.push({
+      label: `Total ${numCols[0]} per ${textCols[0]}`,
+      sql: `select ${textCols[0]}, sum(${numCols[0]}) as total\nfrom ${tableName}\ngroup by ${textCols[0]}\norder by total desc;`,
+    });
+    templates.push({
+      label: `Top 10 baris berdasarkan ${numCols[0]}`,
+      sql: `select *\nfrom ${tableName}\norder by ${numCols[0]} desc\nlimit 10;`,
+    });
+  }
+  if (dateCols[0] && numCols[0]) {
+    templates.push({
+      label: `Tren ${numCols[0]} per bulan (${dateCols[0]})`,
+      sql: `select date_trunc('month', ${dateCols[0]}) as bulan, sum(${numCols[0]}) as total\nfrom ${tableName}\ngroup by bulan\norder by bulan;`,
+    });
+  }
+  templates.push({
+    label: `Jumlah baris per ${textCols[0] || "kolom pertama"}`,
+    sql: `select ${textCols[0] || cols[0].column_name}, count(*) as jumlah\nfrom ${tableName}\ngroup by ${textCols[0] || cols[0].column_name}\norder by jumlah desc;`,
+  });
+
+  listEl.innerHTML = "";
+  templates.forEach((t) => {
+    const btn = document.createElement("button");
+    btn.textContent = t.label;
+    btn.style.cssText = "text-align:left;font-size:12px;padding:6px 8px;";
+    btn.onclick = () => {
+      sqlEl.value = t.sql;
+    };
+    listEl.appendChild(btn);
+  });
+}
 
 initDB();
