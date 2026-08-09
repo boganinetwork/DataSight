@@ -1,4 +1,4 @@
-import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm";
+import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm";
 
 const statusEl = document.getElementById("status");
 const runBtn = document.getElementById("run-btn");
