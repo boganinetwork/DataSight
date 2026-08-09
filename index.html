@@ -251,8 +251,60 @@
   <body>
     <header>
       <h1>Data Observatory</h1>
+      <input
+        type="color"
+        id="theme-accent"
+        value="#4d8cff"
+        title="Warna aksen"
+        style="
+          width: 26px;
+          height: 26px;
+          border: none;
+          background: none;
+          cursor: pointer;
+        "
+      />
       <span class="status" id="status">memuat mesin query…</span>
     </header>
+
+    <button
+      id="dashboard-toggle"
+      style="position: fixed; top: 8px; right: 16px; font-size: 12px"
+    >
+      Dashboard
+    </button>
+    <div
+      id="dashboard-view"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        z-index: 50;
+        padding: 20px;
+        overflow: auto;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        "
+      >
+        <h2 style="font-size: 14px; margin: 0">Dashboard</h2>
+        <button id="dashboard-close">✕ Tutup</button>
+      </div>
+      <div
+        id="dashboard-grid"
+        style="
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+          gap: 14px;
+        "
+      ></div>
+    </div>
 
     <div class="layout">
       <div class="sidebar">
@@ -292,6 +344,24 @@
         <div class="split">
           <div class="card">
             <h2>Hasil</h2>
+            <div
+              class="chart-controls"
+              id="filter-controls"
+              style="display: none"
+            >
+              <select id="filter-col"></select>
+              <select id="filter-val"></select>
+              <button id="filter-clear" style="font-size: 12px">✕ Clear</button>
+            </div>
+            <div
+              id="summary-stats"
+              style="
+                font-size: 11px;
+                font-family: var(--mono);
+                color: var(--text-muted);
+                margin-bottom: 8px;
+              "
+            ></div>
             <div class="scroll" id="result-area">
               <div class="empty">Upload file lalu jalankan query.</div>
             </div>
@@ -313,6 +383,9 @@
               </select>
               <button id="export-csv-btn">Export CSV</button>
               <button id="export-png-btn">Export PNG</button>
+              <button id="pin-chart-btn" style="font-size: 12px">
+                + Pin ke Dashboard
+              </button>
             </div>
             <div class="scroll" style="flex: 1">
               <canvas id="chart"></canvas>
@@ -341,6 +414,7 @@
       let db, conn;
       let tables = JSON.parse(localStorage.getItem("do_tables") || "{}"); // {tableName: {filename, kind}}
       let lastResult = null;
+      let rawResult = null;
       let chartInstance = null;
       const STORAGE_KEY_PREFIX = "do_file_";
 
@@ -454,6 +528,120 @@
       });
 
       renderHistory();
+
+      let dashboardItems = JSON.parse(
+        localStorage.getItem("do_dashboard") || "[]",
+      );
+      const dashboardView = document.getElementById("dashboard-view");
+      const dashboardGrid = document.getElementById("dashboard-grid");
+
+      document
+        .getElementById("dashboard-toggle")
+        .addEventListener("click", () => {
+          dashboardView.style.display = "block";
+          renderDashboard();
+        });
+      document
+        .getElementById("dashboard-close")
+        .addEventListener("click", () => {
+          dashboardView.style.display = "none";
+        });
+      document.getElementById("pin-chart-btn").addEventListener("click", () => {
+        if (!sqlEl.value.trim()) return;
+        dashboardItems.push({
+          id: Date.now(),
+          sql: sqlEl.value.trim(),
+          chartType: chartTypeEl.value,
+          xKey: chartXEl.value,
+          yKey: chartYEl.value,
+          title: sqlEl.value.trim().slice(0, 40),
+        });
+        localStorage.setItem("do_dashboard", JSON.stringify(dashboardItems));
+        statusEl.textContent = "chart dipin ke dashboard";
+      });
+
+      async function renderDashboard() {
+        dashboardGrid.innerHTML = "";
+        for (const item of dashboardItems) {
+          const card = document.createElement("div");
+          card.style.cssText =
+            "background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px;";
+          card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${item.title}</span>
+      <button data-id="${item.id}" class="dash-remove" style="font-size:11px;">✕</button></div>
+      <canvas id="dash-chart-${item.id}" height="180"></canvas>`;
+          dashboardGrid.appendChild(card);
+          card.querySelector(".dash-remove").addEventListener("click", () => {
+            dashboardItems = dashboardItems.filter((d) => d.id !== item.id);
+            localStorage.setItem(
+              "do_dashboard",
+              JSON.stringify(dashboardItems),
+            );
+            renderDashboard();
+          });
+          try {
+            const result = await conn.query(item.sql);
+            const rows = result.toArray().map((r) => r.toJSON());
+            const labels = rows.map((r) => r[item.xKey]);
+            const data = rows.map((r) => Number(r[item.yKey]) || 0);
+            const ctx = document
+              .getElementById(`dash-chart-${item.id}`)
+              .getContext("2d");
+            new Chart(ctx, {
+              type: item.chartType === "scatter" ? "scatter" : item.chartType,
+              data:
+                item.chartType === "scatter"
+                  ? {
+                      datasets: [
+                        {
+                          label: item.yKey,
+                          data: rows.map((r) => ({
+                            x: Number(r[item.xKey]),
+                            y: Number(r[item.yKey]),
+                          })),
+                          backgroundColor: "#4d8cff",
+                        },
+                      ],
+                    }
+                  : {
+                      labels,
+                      datasets: [
+                        {
+                          label: item.yKey,
+                          data,
+                          backgroundColor: "#4d8cff",
+                          borderColor: "#4d8cff",
+                        },
+                      ],
+                    },
+              options: {
+                responsive: true,
+                plugins: { legend: { labels: { color: "#9a9c9f" } } },
+                scales:
+                  item.chartType === "pie"
+                    ? {}
+                    : {
+                        x: { ticks: { color: "#6b6d70" } },
+                        y: { ticks: { color: "#6b6d70" } },
+                      },
+              },
+            });
+          } catch (err) {
+            dashboardGrid.lastChild.querySelector("canvas").outerHTML =
+              `<div class="error">${err.message}</div>`;
+          }
+        }
+      }
+
+      const savedAccent = localStorage.getItem("do_accent");
+      if (savedAccent) {
+        document.documentElement.style.setProperty("--accent", savedAccent);
+        document.getElementById("theme-accent").value = savedAccent;
+      }
+      document.getElementById("theme-accent").addEventListener("input", (e) => {
+        document.documentElement.style.setProperty("--accent", e.target.value);
+        localStorage.setItem("do_accent", e.target.value);
+      });
 
       async function initDB() {
         const bundles = duckdb.getJsDelivrBundles();
@@ -574,8 +762,11 @@
         try {
           const arrowResult = await conn.query(sql);
           const rows = arrowResult.toArray().map((r) => r.toJSON());
+          rawResult = rows;
           lastResult = rows;
+          setupFilter(rows);
           renderTable(rows);
+          renderSummaryStats(rows);
           populateChartColumns(rows);
           renderChart();
         } catch (err) {
@@ -603,6 +794,87 @@
         html += "</tbody></table>";
         resultArea.innerHTML = html;
       }
+
+      function renderSummaryStats(rows) {
+        const el = document.getElementById("summary-stats");
+        if (!rows.length) {
+          el.textContent = "";
+          return;
+        }
+        const cols = Object.keys(rows[0]);
+        const parts = cols.map((col) => {
+          const values = rows.map((r) => r[col]);
+          const nonNull = values.filter(
+            (v) => v !== null && v !== undefined && v !== "",
+          );
+          const nullCount = values.length - nonNull.length;
+          const numeric = nonNull.map(Number).filter((v) => !isNaN(v));
+          if (numeric.length === nonNull.length && numeric.length > 0) {
+            const min = Math.min(...numeric).toLocaleString();
+            const max = Math.max(...numeric).toLocaleString();
+            const avg = (
+              numeric.reduce((a, b) => a + b, 0) / numeric.length
+            ).toLocaleString(undefined, { maximumFractionDigits: 2 });
+            return `${col}: min ${min} · max ${max} · avg ${avg} · null ${nullCount}`;
+          }
+          return `${col}: ${new Set(nonNull).size} unik · null ${nullCount}`;
+        });
+        el.innerHTML = parts.map((p) => `<div>${p}</div>`).join("");
+      }
+
+      function setupFilter(rows) {
+        const filterControls = document.getElementById("filter-controls");
+        const colEl = document.getElementById("filter-col");
+        const valEl = document.getElementById("filter-val");
+        if (!rows.length) {
+          filterControls.style.display = "none";
+          return;
+        }
+        filterControls.style.display = "flex";
+        const cols = Object.keys(rows[0]);
+        colEl.innerHTML =
+          '<option value="">Filter kolom…</option>' +
+          cols.map((c) => `<option value="${c}">${c}</option>`).join("");
+        colEl.onchange = () => {
+          const col = colEl.value;
+          if (!col) {
+            valEl.innerHTML = "";
+            applyFilter();
+            return;
+          }
+          const uniqueVals = [...new Set(rows.map((r) => r[col]))].slice(
+            0,
+            200,
+          );
+          valEl.innerHTML =
+            '<option value="">Semua nilai</option>' +
+            uniqueVals
+              .map((v) => `<option value="${v}">${v}</option>`)
+              .join("");
+          applyFilter();
+        };
+        valEl.onchange = applyFilter;
+      }
+
+      function applyFilter() {
+        const col = document.getElementById("filter-col").value;
+        const val = document.getElementById("filter-val").value;
+        if (!col || !val) {
+          lastResult = rawResult;
+        } else {
+          lastResult = rawResult.filter((r) => String(r[col]) === val);
+        }
+        renderTable(lastResult);
+        renderSummaryStats(lastResult);
+        populateChartColumns(lastResult);
+        renderChart();
+      }
+
+      document.getElementById("filter-clear").addEventListener("click", () => {
+        document.getElementById("filter-col").value = "";
+        document.getElementById("filter-val").innerHTML = "";
+        applyFilter();
+      });
 
       function populateChartColumns(rows) {
         chartXEl.innerHTML = "";
