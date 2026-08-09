@@ -36,7 +36,7 @@ header h1 {
   margin: 0;
   letter-spacing: 0.2px;
 }
-.status {
+header .status {
   font-size: 12px;
   color: var(--text-muted);
   font-family: var(--mono);
@@ -52,7 +52,7 @@ header h1 {
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   overflow-y: auto;
 }
 .sidebar h2 {
@@ -76,6 +76,10 @@ header h1 {
 .file-item:hover {
   background: var(--panel2);
 }
+.file-item.active {
+  background: var(--accent-dim);
+  color: #cfe0ff;
+}
 .file-item button {
   background: none;
   border: none;
@@ -87,9 +91,7 @@ header h1 {
 .file-item button:hover {
   color: #ff6b6b;
 }
-#upload-btn,
-#save-project-btn,
-#load-project-btn {
+#upload-btn {
   width: 100%;
   padding: 8px;
   border-radius: 6px;
@@ -99,14 +101,11 @@ header h1 {
   font-size: 13px;
   cursor: pointer;
 }
-#upload-btn:hover,
-#save-project-btn:hover,
-#load-project-btn:hover {
+#upload-btn:hover {
   border-color: var(--accent);
   color: var(--text);
 }
-#file-input,
-#project-input {
+#file-input {
   display: none;
 }
 .main {
@@ -152,7 +151,6 @@ header h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
   margin-top: 8px;
 }
 #run-btn {
@@ -176,7 +174,6 @@ header h1 {
   font-size: 12px;
   color: var(--text-muted);
   font-family: var(--mono);
-  flex: 1;
 }
 .split {
   display: grid;
@@ -218,15 +215,13 @@ td {
   margin-bottom: 8px;
   flex-wrap: wrap;
 }
-select,
-button {
+select {
   background: var(--panel2);
   border: 1px solid var(--border);
   color: var(--text);
   font-size: 12px;
   padding: 5px 8px;
   border-radius: 5px;
-  cursor: pointer;
 }
 .empty {
   color: var(--text-muted);
@@ -242,10 +237,4 @@ button {
 }
 canvas {
   max-height: 100%;
-}
-#summary-stats {
-  font-size: 11px;
-  font-family: var(--mono);
-  color: var(--text-muted);
-  margin-bottom: 8px;
 }

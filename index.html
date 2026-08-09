@@ -9,16 +9,21 @@
   <body>
     <header>
       <h1>Data Observatory</h1>
-      <div style="display: flex; align-items: center; gap: 10px">
-        <input
-          type="color"
-          id="theme-accent"
-          value="#4d8cff"
-          title="Warna aksen"
-        />
-        <button id="dashboard-toggle">Dashboard</button>
-        <span class="status" id="status">memuat mesin query…</span>
-      </div>
+      <input
+        type="color"
+        id="theme-accent"
+        value="#4d8cff"
+        title="Warna aksen"
+        style="
+          width: 26px;
+          height: 26px;
+          border: none;
+          background: none;
+          cursor: pointer;
+        "
+      />
+      <button id="dashboard-toggle" style="font-size: 12px">Dashboard</button>
+      <span class="status" id="status">memuat mesin query…</span>
     </header>
 
     <div
@@ -61,7 +66,6 @@
           <div id="file-list" style="margin-top: 8px"></div>
         </div>
         <button id="upload-btn">+ Upload CSV / JSON</button>
-        <input type="file" id="file-input" accept=".csv,.json" multiple />
         <button id="save-project-btn">Save Project</button>
         <button id="load-project-btn">Load Project</button>
         <input
@@ -70,6 +74,7 @@
           accept=".json"
           style="display: none"
         />
+        <input type="file" id="file-input" accept=".csv,.json" multiple />
       </div>
 
       <div class="main">
@@ -92,7 +97,6 @@
         <div class="split">
           <div class="card">
             <h2>Hasil</h2>
-            <div id="summary-stats"></div>
             <div
               class="chart-controls"
               id="filter-controls"
@@ -100,8 +104,17 @@
             >
               <select id="filter-col"></select>
               <select id="filter-val"></select>
-              <button id="filter-clear">✕ Clear</button>
+              <button id="filter-clear" style="font-size: 12px">✕ Clear</button>
             </div>
+            <div
+              id="summary-stats"
+              style="
+                font-size: 11px;
+                font-family: var(--mono);
+                color: var(--text-muted);
+                margin-bottom: 8px;
+              "
+            ></div>
             <div class="scroll" id="result-area">
               <div class="empty">Upload file lalu jalankan query.</div>
             </div>
@@ -123,7 +136,9 @@
               </select>
               <button id="export-csv-btn">Export CSV</button>
               <button id="export-png-btn">Export PNG</button>
-              <button id="pin-chart-btn">+ Pin ke Dashboard</button>
+              <button id="pin-chart-btn" style="font-size: 12px">
+                + Pin ke Dashboard
+              </button>
             </div>
             <div class="scroll" style="flex: 1">
               <canvas id="chart"></canvas>

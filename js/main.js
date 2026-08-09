@@ -1,21 +1,270 @@
-import { state } from "./state.js";
-import { initDB, loadTableFromText, sanitizeTableName } from "./db.js";
-import { renderFileList, setupTheme } from "./ui.js";
-import { runQuery, renderHistory } from "./query.js";
-import { renderChart, renderDashboard } from "./chart.js";
-import { exportCSV, exportPNG, saveProject, loadProject } from "./export.js";
+import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.28.0/+esm";
 
 const statusEl = document.getElementById("status");
 const runBtn = document.getElementById("run-btn");
 const sqlEl = document.getElementById("sql");
+const resultArea = document.getElementById("result-area");
+const fileListEl = document.getElementById("file-list");
+const tableHint = document.getElementById("table-hint");
 const uploadBtn = document.getElementById("upload-btn");
 const fileInput = document.getElementById("file-input");
 const chartTypeEl = document.getElementById("chart-type");
 const chartXEl = document.getElementById("chart-x");
 const chartYEl = document.getElementById("chart-y");
-const dashboardView = document.getElementById("dashboard-view");
 
-setupTheme();
+let db, conn;
+let tables = JSON.parse(localStorage.getItem("do_tables") || "{}");
+let lastResult = null;
+let rawResult = null;
+let chartInstance = null;
+const STORAGE_KEY_PREFIX = "do_file_";
+
+document.getElementById("export-csv-btn").addEventListener("click", () => {
+  if (!lastResult || !lastResult.length) return;
+  const cols = Object.keys(lastResult[0]);
+  const csv = [cols.join(",")]
+    .concat(
+      lastResult.map((r) =>
+        cols.map((c) => JSON.stringify(r[c] ?? "")).join(","),
+      ),
+    )
+    .join("\n");
+  downloadBlob(csv, "result.csv", "text/csv");
+});
+
+document.getElementById("export-png-btn").addEventListener("click", () => {
+  if (!chartInstance) return;
+  const link = document.createElement("a");
+  link.download = "chart.png";
+  link.href = document.getElementById("chart").toDataURL("image/png");
+  link.click();
+});
+
+function downloadBlob(content, filename, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("save-project-btn").addEventListener("click", () => {
+  const project = { tables: {}, sql: sqlEl.value };
+  for (const name of Object.keys(tables)) {
+    project.tables[name] = {
+      meta: tables[name],
+      content: localStorage.getItem(STORAGE_KEY_PREFIX + name),
+    };
+  }
+  downloadBlob(JSON.stringify(project), "project.json", "application/json");
+});
+
+document.getElementById("load-project-btn").addEventListener("click", () => {
+  document.getElementById("project-input").click();
+});
+document
+  .getElementById("project-input")
+  .addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const project = JSON.parse(await file.text());
+    for (const [name, t] of Object.entries(project.tables)) {
+      await loadTableFromText(name, t.meta.filename, t.content, t.meta.kind);
+    }
+    sqlEl.value = project.sql || "";
+    renderFileList();
+    e.target.value = "";
+  });
+
+let queryHistory = JSON.parse(localStorage.getItem("do_query_history") || "[]");
+const historyEl = document.getElementById("query-history");
+
+function renderHistory() {
+  historyEl.innerHTML = '<option value="">Riwayat query…</option>';
+  queryHistory.forEach((q, i) => {
+    const opt = document.createElement("option");
+    opt.value = i;
+    opt.textContent = q.length > 50 ? q.slice(0, 50) + "…" : q;
+    historyEl.appendChild(opt);
+  });
+}
+
+function pushHistory(sql) {
+  queryHistory = queryHistory.filter((q) => q !== sql);
+  queryHistory.unshift(sql);
+  queryHistory = queryHistory.slice(0, 20);
+  localStorage.setItem("do_query_history", JSON.stringify(queryHistory));
+  renderHistory();
+}
+
+historyEl.addEventListener("change", () => {
+  const idx = historyEl.value;
+  if (idx !== "") sqlEl.value = queryHistory[idx];
+});
+
+renderHistory();
+
+let dashboardItems = JSON.parse(localStorage.getItem("do_dashboard") || "[]");
+const dashboardView = document.getElementById("dashboard-view");
+const dashboardGrid = document.getElementById("dashboard-grid");
+
+document.getElementById("dashboard-toggle").addEventListener("click", () => {
+  dashboardView.style.display = "block";
+  renderDashboard();
+});
+document.getElementById("dashboard-close").addEventListener("click", () => {
+  dashboardView.style.display = "none";
+});
+document.getElementById("pin-chart-btn").addEventListener("click", () => {
+  if (!sqlEl.value.trim()) return;
+  dashboardItems.push({
+    id: Date.now(),
+    sql: sqlEl.value.trim(),
+    chartType: chartTypeEl.value,
+    xKey: chartXEl.value,
+    yKey: chartYEl.value,
+    title: sqlEl.value.trim().slice(0, 40),
+  });
+  localStorage.setItem("do_dashboard", JSON.stringify(dashboardItems));
+  statusEl.textContent = "chart dipin ke dashboard";
+});
+
+async function renderDashboard() {
+  dashboardGrid.innerHTML = "";
+  for (const item of dashboardItems) {
+    const card = document.createElement("div");
+    card.style.cssText =
+      "background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px;";
+    card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${item.title}</span>
+      <button data-id="${item.id}" class="dash-remove" style="font-size:11px;">✕</button></div>
+      <canvas id="dash-chart-${item.id}" height="180"></canvas>`;
+    dashboardGrid.appendChild(card);
+    card.querySelector(".dash-remove").addEventListener("click", () => {
+      dashboardItems = dashboardItems.filter((d) => d.id !== item.id);
+      localStorage.setItem("do_dashboard", JSON.stringify(dashboardItems));
+      renderDashboard();
+    });
+    try {
+      const result = await conn.query(item.sql);
+      const rows = result.toArray().map((r) => r.toJSON());
+      const labels = rows.map((r) => r[item.xKey]);
+      const data = rows.map((r) => Number(r[item.yKey]) || 0);
+      const ctx = document
+        .getElementById(`dash-chart-${item.id}`)
+        .getContext("2d");
+      new Chart(ctx, {
+        type: item.chartType === "scatter" ? "scatter" : item.chartType,
+        data:
+          item.chartType === "scatter"
+            ? {
+                datasets: [
+                  {
+                    label: item.yKey,
+                    data: rows.map((r) => ({
+                      x: Number(r[item.xKey]),
+                      y: Number(r[item.yKey]),
+                    })),
+                    backgroundColor: "#4d8cff",
+                  },
+                ],
+              }
+            : {
+                labels,
+                datasets: [
+                  {
+                    label: item.yKey,
+                    data,
+                    backgroundColor: "#4d8cff",
+                    borderColor: "#4d8cff",
+                  },
+                ],
+              },
+        options: {
+          responsive: true,
+          plugins: { legend: { labels: { color: "#9a9c9f" } } },
+          scales:
+            item.chartType === "pie"
+              ? {}
+              : {
+                  x: { ticks: { color: "#6b6d70" } },
+                  y: { ticks: { color: "#6b6d70" } },
+                },
+        },
+      });
+    } catch (err) {
+      dashboardGrid.lastChild.querySelector("canvas").outerHTML =
+        `<div class="error">${err.message}</div>`;
+    }
+  }
+}
+
+const savedAccent = localStorage.getItem("do_accent");
+if (savedAccent) {
+  document.documentElement.style.setProperty("--accent", savedAccent);
+  document.getElementById("theme-accent").value = savedAccent;
+}
+document.getElementById("theme-accent").addEventListener("input", (e) => {
+  document.documentElement.style.setProperty("--accent", e.target.value);
+  localStorage.setItem("do_accent", e.target.value);
+});
+
+async function initDB() {
+  const bundles = duckdb.getJsDelivrBundles();
+  const bundle = await duckdb.selectBundle(bundles);
+  const workerUrl = URL.createObjectURL(
+    new Blob([`importScripts("${bundle.mainWorker}");`], {
+      type: "text/javascript",
+    }),
+  );
+  const worker = new Worker(workerUrl);
+  const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
+  db = new duckdb.AsyncDuckDB(logger, worker);
+  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  URL.revokeObjectURL(workerUrl);
+  conn = await db.connect();
+  statusEl.textContent = "siap";
+  runBtn.disabled = false;
+
+  for (const [name, meta] of Object.entries(tables)) {
+    const content = localStorage.getItem(STORAGE_KEY_PREFIX + name);
+    if (content) {
+      await loadTableFromText(name, meta.filename, content, meta.kind, false);
+    }
+  }
+  renderFileList();
+  const savedSql = localStorage.getItem("do_last_sql");
+  if (savedSql) sqlEl.value = savedSql;
+}
+
+async function loadTableFromText(
+  tableName,
+  filename,
+  text,
+  kind,
+  persist = true,
+) {
+  await db.registerFileText(filename, text);
+  const readFn = kind === "json" ? "read_json_auto" : "read_csv_auto";
+  await conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+  await conn.query(
+    `CREATE TABLE "${tableName}" AS SELECT * FROM ${readFn}('${filename}')`,
+  );
+  tables[tableName] = { filename, kind };
+  if (persist) {
+    localStorage.setItem(STORAGE_KEY_PREFIX + tableName, text);
+    localStorage.setItem("do_tables", JSON.stringify(tables));
+  }
+}
+
+function sanitizeTableName(filename) {
+  return filename
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .toLowerCase();
+}
 
 uploadBtn.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", async (e) => {
@@ -35,6 +284,216 @@ fileInput.addEventListener("change", async (e) => {
   renderFileList();
 });
 
+function renderFileList() {
+  fileListEl.innerHTML = "";
+  const names = Object.keys(tables);
+  if (names.length === 0) {
+    tableHint.textContent = "belum ada tabel";
+    return;
+  }
+  tableHint.textContent = names.join(", ");
+  names.forEach((name) => {
+    const row = document.createElement("div");
+    row.className = "file-item";
+    row.innerHTML = `<span>${name}</span>`;
+    const del = document.createElement("button");
+    del.textContent = "✕";
+    del.onclick = async (ev) => {
+      ev.stopPropagation();
+      await conn.query(`DROP TABLE IF EXISTS "${name}"`);
+      delete tables[name];
+      localStorage.removeItem(STORAGE_KEY_PREFIX + name);
+      localStorage.setItem("do_tables", JSON.stringify(tables));
+      renderFileList();
+    };
+    row.appendChild(del);
+    row.onclick = () => {
+      sqlEl.value = `select * from ${name} limit 100;`;
+    };
+    fileListEl.appendChild(row);
+  });
+}
+
+async function runQuery() {
+  const sql = sqlEl.value.trim();
+  if (!sql) return;
+  localStorage.setItem("do_last_sql", sql);
+  pushHistory(sql);
+  resultArea.innerHTML = "";
+  try {
+    const arrowResult = await conn.query(sql);
+    const rows = arrowResult.toArray().map((r) => r.toJSON());
+    rawResult = rows;
+    lastResult = rows;
+    setupFilter(rows);
+    renderTable(rows);
+    renderSummaryStats(rows);
+    populateChartColumns(rows);
+    renderChart();
+  } catch (err) {
+    resultArea.innerHTML = `<div class="error">${err.message}</div>`;
+  }
+}
+
+function renderTable(rows) {
+  if (!rows.length) {
+    resultArea.innerHTML =
+      '<div class="empty">Query berhasil, tidak ada baris.</div>';
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  let html =
+    "<table><thead><tr>" +
+    cols.map((c) => `<th>${c}</th>`).join("") +
+    "</tr></thead><tbody>";
+  for (const row of rows.slice(0, 500)) {
+    html +=
+      "<tr>" + cols.map((c) => `<td>${row[c] ?? ""}</td>`).join("") + "</tr>";
+  }
+  html += "</tbody></table>";
+  resultArea.innerHTML = html;
+}
+
+function renderSummaryStats(rows) {
+  const el = document.getElementById("summary-stats");
+  if (!rows.length) {
+    el.textContent = "";
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  const parts = cols.map((col) => {
+    const values = rows.map((r) => r[col]);
+    const nonNull = values.filter(
+      (v) => v !== null && v !== undefined && v !== "",
+    );
+    const nullCount = values.length - nonNull.length;
+    const numeric = nonNull.map(Number).filter((v) => !isNaN(v));
+    if (numeric.length === nonNull.length && numeric.length > 0) {
+      const min = Math.min(...numeric).toLocaleString();
+      const max = Math.max(...numeric).toLocaleString();
+      const avg = (
+        numeric.reduce((a, b) => a + b, 0) / numeric.length
+      ).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      return `${col}: min ${min} · max ${max} · avg ${avg} · null ${nullCount}`;
+    }
+    return `${col}: ${new Set(nonNull).size} unik · null ${nullCount}`;
+  });
+  el.innerHTML = parts.map((p) => `<div>${p}</div>`).join("");
+}
+
+function setupFilter(rows) {
+  const filterControls = document.getElementById("filter-controls");
+  const colEl = document.getElementById("filter-col");
+  const valEl = document.getElementById("filter-val");
+  if (!rows.length) {
+    filterControls.style.display = "none";
+    return;
+  }
+  filterControls.style.display = "flex";
+  const cols = Object.keys(rows[0]);
+  colEl.innerHTML =
+    '<option value="">Filter kolom…</option>' +
+    cols.map((c) => `<option value="${c}">${c}</option>`).join("");
+  colEl.onchange = () => {
+    const col = colEl.value;
+    if (!col) {
+      valEl.innerHTML = "";
+      applyFilter();
+      return;
+    }
+    const uniqueVals = [...new Set(rows.map((r) => r[col]))].slice(0, 200);
+    valEl.innerHTML =
+      '<option value="">Semua nilai</option>' +
+      uniqueVals.map((v) => `<option value="${v}">${v}</option>`).join("");
+    applyFilter();
+  };
+  valEl.onchange = applyFilter;
+}
+
+function applyFilter() {
+  const col = document.getElementById("filter-col").value;
+  const val = document.getElementById("filter-val").value;
+  if (!col || !val) {
+    lastResult = rawResult;
+  } else {
+    lastResult = rawResult.filter((r) => String(r[col]) === val);
+  }
+  renderTable(lastResult);
+  renderSummaryStats(lastResult);
+  populateChartColumns(lastResult);
+  renderChart();
+}
+
+document.getElementById("filter-clear").addEventListener("click", () => {
+  document.getElementById("filter-col").value = "";
+  document.getElementById("filter-val").innerHTML = "";
+  applyFilter();
+});
+
+function populateChartColumns(rows) {
+  chartXEl.innerHTML = "";
+  chartYEl.innerHTML = "";
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]);
+  cols.forEach((c) => {
+    chartXEl.innerHTML += `<option value="${c}">${c}</option>`;
+    chartYEl.innerHTML += `<option value="${c}">${c}</option>`;
+  });
+  if (cols.length > 1) chartYEl.value = cols[1];
+}
+
+function renderChart() {
+  if (!lastResult || !lastResult.length) return;
+  const type = chartTypeEl.value;
+  const xKey = chartXEl.value,
+    yKey = chartYEl.value;
+  const labels = lastResult.map((r) => r[xKey]);
+  const data = lastResult.map((r) => Number(r[yKey]) || 0);
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById("chart").getContext("2d");
+  const cfg = {
+    type: type === "scatter" ? "scatter" : type,
+    data:
+      type === "scatter"
+        ? {
+            datasets: [
+              {
+                label: yKey,
+                data: lastResult.map((r) => ({
+                  x: Number(r[xKey]),
+                  y: Number(r[yKey]),
+                })),
+                backgroundColor: "#4d8cff",
+              },
+            ],
+          }
+        : {
+            labels,
+            datasets: [
+              {
+                label: yKey,
+                data,
+                backgroundColor: "#4d8cff",
+                borderColor: "#4d8cff",
+              },
+            ],
+          },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#9a9c9f" } } },
+      scales:
+        type === "pie"
+          ? {}
+          : {
+              x: { ticks: { color: "#6b6d70" }, grid: { color: "#2c2e31" } },
+              y: { ticks: { color: "#6b6d70" }, grid: { color: "#2c2e31" } },
+            },
+    },
+  };
+  chartInstance = new Chart(ctx, cfg);
+}
+
 runBtn.addEventListener("click", runQuery);
 sqlEl.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") runQuery();
@@ -43,51 +502,4 @@ chartTypeEl.addEventListener("change", renderChart);
 chartXEl.addEventListener("change", renderChart);
 chartYEl.addEventListener("change", renderChart);
 
-document.getElementById("export-csv-btn").addEventListener("click", exportCSV);
-document.getElementById("export-png-btn").addEventListener("click", exportPNG);
-document
-  .getElementById("save-project-btn")
-  .addEventListener("click", saveProject);
-document
-  .getElementById("load-project-btn")
-  .addEventListener("click", () =>
-    document.getElementById("project-input").click(),
-  );
-document
-  .getElementById("project-input")
-  .addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    await loadProject(file);
-    e.target.value = "";
-  });
-
-document.getElementById("pin-chart-btn").addEventListener("click", () => {
-  if (!sqlEl.value.trim()) return;
-  state.dashboardItems.push({
-    id: Date.now(),
-    sql: sqlEl.value.trim(),
-    chartType: chartTypeEl.value,
-    xKey: chartXEl.value,
-    yKey: chartYEl.value,
-    title: sqlEl.value.trim().slice(0, 40),
-  });
-  localStorage.setItem("do_dashboard", JSON.stringify(state.dashboardItems));
-  statusEl.textContent = "chart dipin ke dashboard";
-});
-document.getElementById("dashboard-toggle").addEventListener("click", () => {
-  dashboardView.style.display = "block";
-  renderDashboard();
-});
-document.getElementById("dashboard-close").addEventListener("click", () => {
-  dashboardView.style.display = "none";
-});
-
-initDB(() => {
-  statusEl.textContent = "siap";
-  runBtn.disabled = false;
-  renderFileList();
-  renderHistory();
-  const savedSql = localStorage.getItem("do_last_sql");
-  if (savedSql) sqlEl.value = savedSql;
-});
+initDB();
