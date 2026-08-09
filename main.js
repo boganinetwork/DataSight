@@ -13,12 +13,13 @@ const chartXEl = document.getElementById("chart-x");
 const chartYEl = document.getElementById("chart-y");
 
 let db, conn;
-let tables = JSON.parse(localStorage.getItem("do_tables") || "{}");
+let tables = JSON.parse(localStorage.getItem("do_tables") || "{}"); // {tableName: {filename, kind}}
 let lastResult = null;
 let rawResult = null;
 let chartInstance = null;
 const STORAGE_KEY_PREFIX = "do_file_";
 
+// --- Export CSV ---
 document.getElementById("export-csv-btn").addEventListener("click", () => {
   if (!lastResult || !lastResult.length) return;
   const cols = Object.keys(lastResult[0]);
@@ -32,6 +33,7 @@ document.getElementById("export-csv-btn").addEventListener("click", () => {
   downloadBlob(csv, "result.csv", "text/csv");
 });
 
+// --- Export Chart PNG ---
 document.getElementById("export-png-btn").addEventListener("click", () => {
   if (!chartInstance) return;
   const link = document.createElement("a");
@@ -50,6 +52,7 @@ function downloadBlob(content, filename, mime) {
   URL.revokeObjectURL(url);
 }
 
+// --- Save Project (.json) ---
 document.getElementById("save-project-btn").addEventListener("click", () => {
   const project = { tables: {}, sql: sqlEl.value };
   for (const name of Object.keys(tables)) {
@@ -61,6 +64,7 @@ document.getElementById("save-project-btn").addEventListener("click", () => {
   downloadBlob(JSON.stringify(project), "project.json", "application/json");
 });
 
+// --- Load Project (.json) ---
 document.getElementById("load-project-btn").addEventListener("click", () => {
   document.getElementById("project-input").click();
 });
@@ -78,6 +82,7 @@ document
     e.target.value = "";
   });
 
+// --- Query History ---
 let queryHistory = JSON.parse(localStorage.getItem("do_query_history") || "[]");
 const historyEl = document.getElementById("query-history");
 
@@ -92,9 +97,9 @@ function renderHistory() {
 }
 
 function pushHistory(sql) {
-  queryHistory = queryHistory.filter((q) => q !== sql);
+  queryHistory = queryHistory.filter((q) => q !== sql); // hindari duplikat
   queryHistory.unshift(sql);
-  queryHistory = queryHistory.slice(0, 20);
+  queryHistory = queryHistory.slice(0, 20); // simpan 20 terakhir
   localStorage.setItem("do_query_history", JSON.stringify(queryHistory));
   renderHistory();
 }
@@ -138,9 +143,9 @@ async function renderDashboard() {
     card.style.cssText =
       "background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px;";
     card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-      <span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${item.title}</span>
-      <button data-id="${item.id}" class="dash-remove" style="font-size:11px;">✕</button></div>
-      <canvas id="dash-chart-${item.id}" height="180"></canvas>`;
+<span style="font-size:11px;color:var(--text-muted);font-family:var(--mono);">${item.title}</span>
+<button data-id="${item.id}" class="dash-remove" style="font-size:11px;">✕</button></div>
+<canvas id="dash-chart-${item.id}" height="180"></canvas>`;
     dashboardGrid.appendChild(card);
     card.querySelector(".dash-remove").addEventListener("click", () => {
       dashboardItems = dashboardItems.filter((d) => d.id !== item.id);
@@ -228,6 +233,7 @@ async function initDB() {
   statusEl.textContent = "siap";
   runBtn.disabled = false;
 
+  // restore tabel tersimpan dari sesi sebelumnya
   for (const [name, meta] of Object.entries(tables)) {
     const content = localStorage.getItem(STORAGE_KEY_PREFIX + name);
     if (content) {
@@ -486,8 +492,14 @@ function renderChart() {
         type === "pie"
           ? {}
           : {
-              x: { ticks: { color: "#6b6d70" }, grid: { color: "#2c2e31" } },
-              y: { ticks: { color: "#6b6d70" }, grid: { color: "#2c2e31" } },
+              x: {
+                ticks: { color: "#6b6d70" },
+                grid: { color: "#2c2e31" },
+              },
+              y: {
+                ticks: { color: "#6b6d70" },
+                grid: { color: "#2c2e31" },
+              },
             },
     },
   };
