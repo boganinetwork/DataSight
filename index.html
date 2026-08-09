@@ -261,6 +261,13 @@
           <div id="file-list" style="margin-top: 8px"></div>
         </div>
         <button id="upload-btn">+ Upload CSV / JSON</button>
+        <button id="save-project-btn">Save Project</button>
+        <button id="load-project-btn">Load Project</button>
+        <input
+          type="file"
+          id="project-input"
+          accept=".json"
+          style="display: none" />
         <input type="file" id="file-input" accept=".csv,.json" multiple />
       </div>
 
@@ -299,6 +306,8 @@
               <select id="chart-y">
                 <option>y</option>
               </select>
+              <button id="export-csv-btn">Export CSV</button>
+              <button id="export-png-btn">Export PNG</button>
             </div>
             <div class="scroll" style="flex: 1">
               <canvas id="chart"></canvas>
@@ -329,6 +338,86 @@
       let lastResult = null;
       let chartInstance = null;
       const STORAGE_KEY_PREFIX = "do_file_";
+
+      // --- Export CSV ---
+      document
+        .getElementById("export-csv-btn")
+        .addEventListener("click", () => {
+          if (!lastResult || !lastResult.length) return;
+          const cols = Object.keys(lastResult[0]);
+          const csv = [cols.join(",")]
+            .concat(
+              lastResult.map((r) =>
+                cols.map((c) => JSON.stringify(r[c] ?? "")).join(","),
+              ),
+            )
+            .join("\n");
+          downloadBlob(csv, "result.csv", "text/csv");
+        });
+
+      // --- Export Chart PNG ---
+      document
+        .getElementById("export-png-btn")
+        .addEventListener("click", () => {
+          if (!chartInstance) return;
+          const link = document.createElement("a");
+          link.download = "chart.png";
+          link.href = document.getElementById("chart").toDataURL("image/png");
+          link.click();
+        });
+
+      function downloadBlob(content, filename, mime) {
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      // --- Save Project (.json) ---
+      document
+        .getElementById("save-project-btn")
+        .addEventListener("click", () => {
+          const project = { tables: {}, sql: sqlEl.value };
+          for (const name of Object.keys(tables)) {
+            project.tables[name] = {
+              meta: tables[name],
+              content: localStorage.getItem(STORAGE_KEY_PREFIX + name),
+            };
+          }
+          downloadBlob(
+            JSON.stringify(project),
+            "project.json",
+            "application/json",
+          );
+        });
+
+      // --- Load Project (.json) ---
+      document
+        .getElementById("load-project-btn")
+        .addEventListener("click", () => {
+          document.getElementById("project-input").click();
+        });
+      document
+        .getElementById("project-input")
+        .addEventListener("change", async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const project = JSON.parse(await file.text());
+          for (const [name, t] of Object.entries(project.tables)) {
+            await loadTableFromText(
+              name,
+              t.meta.filename,
+              t.content,
+              t.meta.kind,
+            );
+          }
+          sqlEl.value = project.sql || "";
+          renderFileList();
+          e.target.value = "";
+        });
 
       async function initDB() {
         const bundles = duckdb.getJsDelivrBundles();
