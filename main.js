@@ -238,19 +238,28 @@ async function initDB() {
 async function loadTableFromText(
   tableName,
   filename,
-  text,
+  data,
   kind,
   persist = true,
 ) {
-  await db.registerFileText(filename, text);
-  const readFn = kind === "json" ? "read_json_auto" : "read_csv_auto";
+  if (kind === "parquet") {
+    await db.registerFileBuffer(filename, new Uint8Array(data));
+  } else {
+    await db.registerFileText(filename, data);
+  }
+  const readFn =
+    kind === "json"
+      ? "read_json_auto"
+      : kind === "parquet"
+        ? "read_parquet"
+        : "read_csv_auto";
   await conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
   await conn.query(
     `CREATE TABLE "${tableName}" AS SELECT * FROM ${readFn}('${filename}')`,
   );
   tables[tableName] = { filename, kind };
-  if (persist) {
-    localStorage.setItem(STORAGE_KEY_PREFIX + tableName, text);
+  if (persist && kind !== "parquet") {
+    localStorage.setItem(STORAGE_KEY_PREFIX + tableName, data);
     localStorage.setItem("do_tables", JSON.stringify(tables));
   }
 }
@@ -274,15 +283,20 @@ fileInput.addEventListener("change", async (e) => {
       );
       if (!proceed) continue;
     }
-    const text = await file.text();
-    const kind = file.name.endsWith(".json") ? "json" : "csv";
+    const kind = file.name.endsWith(".json")
+      ? "json"
+      : file.name.endsWith(".parquet")
+        ? "parquet"
+        : "csv";
+    const data =
+      kind === "parquet" ? await file.arrayBuffer() : await file.text();
     const tableName = sanitizeTableName(file.name);
     statusEl.textContent = `⏳ Memuat "${file.name}"…`;
     try {
-      await loadTableFromText(tableName, file.name, text, kind);
+      await loadTableFromText(tableName, file.name, data, kind);
       statusEl.textContent = `✓ tabel "${tableName}" dimuat`;
     } catch (err) {
-      statusEl.textContent = "gagal memuat file";
+      statusEl.textContent = "Gagal memuat file";
       console.error(err);
     }
   }
@@ -723,10 +737,13 @@ const sidebarEl = document.querySelector(".sidebar");
 
 sidebarEl.addEventListener("drop", async (e) => {
   const files = [...e.dataTransfer.files].filter(
-    (f) => f.name.endsWith(".csv") || f.name.endsWith(".json"),
+    (f) =>
+      f.name.endsWith(".csv") ||
+      f.name.endsWith(".json") ||
+      f.name.endsWith(".parquet"),
   );
   if (!files.length) {
-    statusEl.textContent = "File harus .csv atau .json";
+    statusEl.textContent = "File harus .csv, .json, atau .parquet";
     return;
   }
   for (const file of files) {
@@ -737,12 +754,17 @@ sidebarEl.addEventListener("drop", async (e) => {
       );
       if (!proceed) continue;
     }
-    const text = await file.text();
-    const kind = file.name.endsWith(".json") ? "json" : "csv";
+    const kind = file.name.endsWith(".json")
+      ? "json"
+      : file.name.endsWith(".parquet")
+        ? "parquet"
+        : "csv";
+    const data =
+      kind === "parquet" ? await file.arrayBuffer() : await file.text();
     const tableName = sanitizeTableName(file.name);
     statusEl.textContent = `⏳ Memuat "${file.name}"…`;
     try {
-      await loadTableFromText(tableName, file.name, text, kind);
+      await loadTableFromText(tableName, file.name, data, kind);
       statusEl.textContent = `✓ tabel "${tableName}" dimuat`;
     } catch (err) {
       statusEl.textContent = "Gagal memuat file";

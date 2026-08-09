@@ -70,12 +70,13 @@ Kalau kamu tutup tab tanpa export, dan tidak ada autosave, data hilang begitu sa
 
 ## Format File yang Didukung
 
-| Format                 | Status                                                   |
-| ---------------------- | -------------------------------------------------------- |
-| CSV                    | ✅ Didukung                                              |
-| JSON                   | ✅ Didukung                                              |
-| Excel, Parquet, SQLite | ❌ Belum (dipertimbangkan untuk pengembangan berikutnya) |
-| PDF, Word              | ❌ Tidak didukung — bukan format data tabular            |
+| Format        | Status                                                   |
+| ------------- | -------------------------------------------------------- |
+| CSV           | ✅ Didukung                                              |
+| JSON          | ✅ Didukung                                              |
+| Parquet       | ✅ Didukung                                              |
+| Excel, SQLite | ❌ Belum (dipertimbangkan untuk pengembangan berikutnya) |
+| PDF, Word     | ❌ Tidak didukung — bukan format data tabular            |
 
 ---
 
