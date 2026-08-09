@@ -9,19 +9,6 @@
   <body>
     <header>
       <h1>Data Observatory</h1>
-      <input
-        type="color"
-        id="theme-accent"
-        value="#4d8cff"
-        title="Warna aksen"
-        style="
-          width: 26px;
-          height: 26px;
-          border: none;
-          background: none;
-          cursor: pointer;
-        "
-      />
       <button id="dashboard-toggle" style="font-size: 12px">Dashboard</button>
       <span class="status" id="status">memuat mesin query…</span>
     </header>
@@ -90,7 +77,73 @@
               <option value="">Riwayat query…</option>
             </select>
             <span class="hint" id="table-hint">belum ada tabel</span>
+            <button id="ai-toggle" style="font-size: 12px">✨ AI</button>
             <button id="run-btn" disabled>Jalankan ▸</button>
+          </div>
+          <div
+            id="ai-panel"
+            style="
+              display: none;
+              margin-top: 10px;
+              padding: 10px;
+              background: var(--panel2);
+              border-radius: 6px;
+            "
+          >
+            <div
+              style="
+                display: flex;
+                gap: 8px;
+                margin-bottom: 8px;
+                flex-wrap: wrap;
+              "
+            >
+              <select id="ai-provider">
+                <option value="gemini">Gemini</option>
+                <option value="groq">Groq</option>
+              </select>
+              <input
+                id="ai-key"
+                type="password"
+                placeholder="API key kamu"
+                style="
+                  flex: 1;
+                  min-width: 160px;
+                  background: var(--panel);
+                  border: 1px solid var(--border);
+                  color: var(--text);
+                  border-radius: 5px;
+                  padding: 5px 8px;
+                  font-size: 12px;
+                "
+              />
+            </div>
+            <div style="display: flex; gap: 8px">
+              <input
+                id="ai-prompt"
+                type="text"
+                placeholder="contoh: total revenue per region"
+                style="
+                  flex: 1;
+                  background: var(--panel);
+                  border: 1px solid var(--border);
+                  color: var(--text);
+                  border-radius: 5px;
+                  padding: 6px 8px;
+                  font-size: 13px;
+                "
+              />
+              <button id="ai-ask">Tanya</button>
+            </div>
+            <div
+              id="ai-status"
+              style="
+                font-size: 11px;
+                color: var(--text-muted);
+                margin-top: 6px;
+                font-family: var(--mono);
+              "
+            ></div>
           </div>
         </div>
 

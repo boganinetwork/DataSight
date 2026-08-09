@@ -206,16 +206,6 @@ async function renderDashboard() {
   }
 }
 
-const savedAccent = localStorage.getItem("do_accent");
-if (savedAccent) {
-  document.documentElement.style.setProperty("--accent", savedAccent);
-  document.getElementById("theme-accent").value = savedAccent;
-}
-document.getElementById("theme-accent").addEventListener("input", (e) => {
-  document.documentElement.style.setProperty("--accent", e.target.value);
-  localStorage.setItem("do_accent", e.target.value);
-});
-
 async function initDB() {
   const bundles = duckdb.getJsDelivrBundles();
   const bundle = await duckdb.selectBundle(bundles);
@@ -513,5 +503,94 @@ sqlEl.addEventListener("keydown", (e) => {
 chartTypeEl.addEventListener("change", renderChart);
 chartXEl.addEventListener("change", renderChart);
 chartYEl.addEventListener("change", renderChart);
+
+document.getElementById("ai-toggle").addEventListener("click", () => {
+  const panel = document.getElementById("ai-panel");
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
+});
+
+const savedProvider = localStorage.getItem("do_ai_provider");
+const savedKey = localStorage.getItem("do_ai_key");
+if (savedProvider) document.getElementById("ai-provider").value = savedProvider;
+if (savedKey) document.getElementById("ai-key").value = savedKey;
+document
+  .getElementById("ai-provider")
+  .addEventListener("change", (e) =>
+    localStorage.setItem("do_ai_provider", e.target.value),
+  );
+document
+  .getElementById("ai-key")
+  .addEventListener("input", (e) =>
+    localStorage.setItem("do_ai_key", e.target.value),
+  );
+
+async function askAI() {
+  const provider = document.getElementById("ai-provider").value;
+  const key = document.getElementById("ai-key").value.trim();
+  const prompt = document.getElementById("ai-prompt").value.trim();
+  const statusBox = document.getElementById("ai-status");
+  if (!key) {
+    statusBox.textContent = "Isi API key dulu.";
+    return;
+  }
+  if (!prompt) return;
+
+  const schema =
+    Object.keys(tables)
+      .map((t) => `${t}`)
+      .join(", ") || "(belum ada tabel)";
+  const systemPrompt = `Kamu adalah generator SQL untuk DuckDB. Tabel yang tersedia: ${schema}. Jawab HANYA dengan satu query SQL valid, tanpa penjelasan, tanpa markdown.`;
+
+  statusBox.textContent = "Meminta AI…";
+  try {
+    let sql;
+    if (provider === "gemini") {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${key}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [
+              { parts: [{ text: `${systemPrompt}\n\nPertanyaan: ${prompt}` }] },
+            ],
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error?.message || "Gagal memanggil Gemini");
+      sql = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    } else {
+      const res = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: prompt },
+            ],
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error?.message || "Gagal memanggil Groq");
+      sql = data.choices?.[0]?.message?.content;
+    }
+    sql = sql.replace(/```sql|```/g, "").trim();
+    sqlEl.value = sql;
+    statusBox.textContent = "Query terisi, cek dulu sebelum dijalankan.";
+  } catch (err) {
+    statusBox.textContent = `Error: ${err.message}`;
+  }
+}
+document.getElementById("ai-ask").addEventListener("click", askAI);
 
 initDB();
