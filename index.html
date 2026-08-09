@@ -267,7 +267,8 @@
           type="file"
           id="project-input"
           accept=".json"
-          style="display: none" />
+          style="display: none"
+        />
         <input type="file" id="file-input" accept=".csv,.json" multiple />
       </div>
 
@@ -277,8 +278,12 @@
           <textarea
             id="sql"
             spellcheck="false"
-            placeholder="select * from nama_tabel limit 100;"></textarea>
+            placeholder="select * from nama_tabel limit 100;"
+          ></textarea>
           <div class="editor-footer">
+            <select id="query-history" style="max-width: 200px">
+              <option value="">Riwayat query…</option>
+            </select>
             <span class="hint" id="table-hint">belum ada tabel</span>
             <button id="run-btn" disabled>Jalankan ▸</button>
           </div>
@@ -419,6 +424,37 @@
           e.target.value = "";
         });
 
+      // --- Query History ---
+      let queryHistory = JSON.parse(
+        localStorage.getItem("do_query_history") || "[]",
+      );
+      const historyEl = document.getElementById("query-history");
+
+      function renderHistory() {
+        historyEl.innerHTML = '<option value="">Riwayat query…</option>';
+        queryHistory.forEach((q, i) => {
+          const opt = document.createElement("option");
+          opt.value = i;
+          opt.textContent = q.length > 50 ? q.slice(0, 50) + "…" : q;
+          historyEl.appendChild(opt);
+        });
+      }
+
+      function pushHistory(sql) {
+        queryHistory = queryHistory.filter((q) => q !== sql); // hindari duplikat
+        queryHistory.unshift(sql);
+        queryHistory = queryHistory.slice(0, 20); // simpan 20 terakhir
+        localStorage.setItem("do_query_history", JSON.stringify(queryHistory));
+        renderHistory();
+      }
+
+      historyEl.addEventListener("change", () => {
+        const idx = historyEl.value;
+        if (idx !== "") sqlEl.value = queryHistory[idx];
+      });
+
+      renderHistory();
+
       async function initDB() {
         const bundles = duckdb.getJsDelivrBundles();
         const bundle = await duckdb.selectBundle(bundles);
@@ -533,6 +569,7 @@
         const sql = sqlEl.value.trim();
         if (!sql) return;
         localStorage.setItem("do_last_sql", sql);
+        pushHistory(sql);
         resultArea.innerHTML = "";
         try {
           const arrowResult = await conn.query(sql);
